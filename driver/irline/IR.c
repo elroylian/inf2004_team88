@@ -233,7 +233,6 @@ int main() {
     gpio_set_irq_enabled_with_callback(IR_SENSOR_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &on_pulse_change);
 
     while (1) {
-        // Your barcode decoding logic can continue here
         sleep_ms(10);
     }
 
