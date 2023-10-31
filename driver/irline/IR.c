@@ -3,11 +3,10 @@
 #include "hardware/gpio.h"
 #include <string.h>
 
-char array[15];
-void enqueue(char);
-int counter = 0;
-void checkarray();
 #define IR_SENSOR_PIN 26 // GPIO pin for the IR line sensor
+
+char array[15];
+int counter = 0;
 bool started = false;
 volatile uint32_t pulse_start = 0;
 volatile bool is_black_bar = false;
@@ -17,73 +16,45 @@ uint32_t shortbar_time = 0;
 bool flag = false;
 char asteriskarray[] = "100010111011101";
 
-void on_pulse_change(uint gpio, uint32_t events)
-{
+void enqueue(char element);
+void checkarray();
+
+void on_pulse_change(uint gpio, uint32_t events) {
     uint32_t current_time = time_us_32();
 
-    if (gpio_get(IR_SENSOR_PIN))
-    {
-
-        if (started == true)
-        {
-            // Transition from black to white; a barcode element has ended
+    if (gpio_get(IR_SENSOR_PIN)) {
+        if (started) {
             pulse_width = current_time - pulse_start;
             pulse_start = current_time;
 
-            if (pulse_width > shortbar_time * 1.3)
-            {
-                // It's a long white bar
-                // printf("Long white bar: %u us\n", pulse_width);
+            if (pulse_width > shortbar_time * 1.3) {
                 enqueue('0');
                 enqueue('0');
                 enqueue('0');
-            }
-            else
-            {
-                // It's a short white bar
-                // printf("Short white bar: %u \n", pulse_width);
+            } else {
                 enqueue('0');
             }
-        }
-        else
-        {
+        } else {
             pulse_start = current_time;
         }
         started = true;
-    }
-    else
-    {
-        if (started == true)
-        {
-
+    } else {
+        if (started) {
             pulse_width = current_time - pulse_start;
             pulse_start = current_time;
-            if (!shortbar_time)
-            {
+            if (!shortbar_time) {
                 shortbar_time = pulse_width;
-                printf("Short bar = %d \n", shortbar_time);
+                printf("Short bar = %d\n", shortbar_time);
             }
-            if (pulse_width > shortbar_time * 1.3)
-            {
-                // It's a long black bar
-                // printf("Long black bar: %u us\n", pulse_width);
+            if (pulse_width > shortbar_time * 1.3) {
                 enqueue('1');
                 enqueue('1');
                 enqueue('1');
-            }
-            else
-            {
-                // It's a short black bar
-                // printf("Short black bar: %u us\n", pulse_width);
+            } else {
                 enqueue('1');
             }
         }
     }
-    // printf(" the array is %s", array);
-    // if (strcmp(array, asteriskarray) == 0)
-    // {
-    //     printf("MATCHMATCHMATCHMATCHMATCHMATCHMATCHMATCHMATCHMATCHMATCHMATCHMATCHMATCH");
-    // }
 }
 
 void checkarray()
@@ -241,38 +212,28 @@ void checkarray()
     flag = true;
 }
 
-void enqueue(char element)
-{
-    if (flag == false)
-    {
+void enqueue(char element) {
+    if (!flag) {
         array[counter] = element;
         counter++;
-        if (counter == 15)
-        {
+        if (counter == 15) {
             counter = 0;
-            // printf("Reset\n");
             checkarray();
         }
-    }
-    else
-    {
+    } else {
         flag = false;
     }
 }
 
-int main()
-{
-
+int main() {
     stdio_init_all();
     gpio_init(IR_SENSOR_PIN);
     gpio_set_dir(IR_SENSOR_PIN, GPIO_IN);
 
     gpio_set_irq_enabled_with_callback(IR_SENSOR_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &on_pulse_change);
 
-    while (1)
-    {
-        // Your barcode decoding logic can continue here
-        sleep_ms(10); // Sleep to avoid busy-waiting
+    while (1) {
+        sleep_ms(10);
     }
 
     return 0;
