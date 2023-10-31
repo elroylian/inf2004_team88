@@ -13,8 +13,10 @@ bool adc_callback(struct repeating_timer *t) {
     uint16_t result = adc_read();
     
     if (result >= THRESHOLD) {
+        // Above or equal threshold
         printf("%u, BLACK DETECTED\n", result);
     } else {           
+        // Below threshold
         printf("%u, WHITE DETECTED\n", result);
     }
     return true;
@@ -22,6 +24,7 @@ bool adc_callback(struct repeating_timer *t) {
 
 int main() {
     stdio_init_all();
+    // Initalise ADC 
     adc_init();
     adc_select_input(ADC_PIN);
 
