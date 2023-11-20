@@ -3,6 +3,7 @@
 #include "hardware/gpio.h"
 #include <string.h>
 
+int starcounter = 0;
 char array[15];
 void enqueue(char);
 int counter = 0;
@@ -19,6 +20,7 @@ bool flag = false;
 void on_pulse_change(uint gpio, uint32_t events)
 {
     uint32_t current_time = time_us_32();
+
 
     if (gpio_get(IR_SENSOR_PIN))
     {
@@ -76,13 +78,15 @@ void on_pulse_change(uint gpio, uint32_t events)
     }
 }
 
-
-//See whether it matches a character
+// See whether it matches a character
 void checkarray()
 {
+
     if (strcmp(array, "100010111011101") == 0)
     {
+
         printf("*\n");
+        starcounter++;
     }
     else if (strcmp(array, "101000111011101") == 0)
     {
@@ -233,7 +237,7 @@ void checkarray()
     flag = true;
 }
 
-//Flip array to read it backwards
+// Flip array to read it backwards
 void flipArray(char arr[], int size)
 {
     int start = 0;
@@ -262,9 +266,6 @@ void enqueue(char element)
         {
             counter = 0;
             checkarray();
-            flipArray(array, 15);
-            checkarray();
-            flipArray(array, 15);
         }
     }
     else
@@ -273,20 +274,8 @@ void enqueue(char element)
     }
 }
 
-
-int main()
+int startbarcode()
 {
-
-    stdio_init_all();
-    gpio_init(IR_SENSOR_PIN);
-    gpio_set_dir(IR_SENSOR_PIN, GPIO_IN);
-
     gpio_set_irq_enabled_with_callback(IR_SENSOR_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &on_pulse_change);
-
-    while (1)
-    {
-        sleep_ms(10);
-    }
-
-    return 0;
+    while(1){}
 }
