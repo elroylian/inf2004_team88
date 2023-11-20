@@ -3,10 +3,11 @@
 #include "hardware/gpio.h"
 #include <string.h>
 
-#define IR_SENSOR_PIN 26 // GPIO pin for the IR line sensor
-
 char array[15];
+void enqueue(char);
 int counter = 0;
+void checkarray();
+#define IR_SENSOR_PIN 26 // GPIO pin for the IR line sensor
 bool started = false;
 volatile uint32_t pulse_start = 0;
 volatile bool is_black_bar = false;
@@ -14,49 +15,69 @@ volatile uint32_t pulse_width = 0;
 uint32_t shortbar_time = 0;
 
 bool flag = false;
-char asteriskarray[] = "100010111011101";
 
-void enqueue(char element);
-void checkarray();
-
-void on_pulse_change(uint gpio, uint32_t events) {
+void on_pulse_change(uint gpio, uint32_t events)
+{
     uint32_t current_time = time_us_32();
 
-    if (gpio_get(IR_SENSOR_PIN)) {
-        if (started) {
+    if (gpio_get(IR_SENSOR_PIN))
+    {
+
+        if (started == true)
+        {
+            // Transition from black to white; a barcode element has ended
             pulse_width = current_time - pulse_start;
             pulse_start = current_time;
 
-            if (pulse_width > shortbar_time * 1.3) {
+            if (pulse_width > shortbar_time * 1.3)
+            {
+                // It's a long white bar
                 enqueue('0');
                 enqueue('0');
-                enqueue('0');
-            } else {
                 enqueue('0');
             }
-        } else {
+            else
+            {
+                // It's a short white bar
+                enqueue('0');
+            }
+        }
+        else
+        {
             pulse_start = current_time;
         }
         started = true;
-    } else {
-        if (started) {
+    }
+    else
+    {
+        if (started == true)
+        {
+
             pulse_width = current_time - pulse_start;
             pulse_start = current_time;
-            if (!shortbar_time) {
+            if (!shortbar_time)
+            {
                 shortbar_time = pulse_width;
-                printf("Short bar = %d\n", shortbar_time);
+                printf("Short bar = %d \n", shortbar_time);
             }
-            if (pulse_width > shortbar_time * 1.3) {
+            if (pulse_width > shortbar_time * 1.3)
+            {
+                // It's a long black bar
                 enqueue('1');
                 enqueue('1');
                 enqueue('1');
-            } else {
+            }
+            else
+            {
+                // It's a short black bar
                 enqueue('1');
             }
         }
     }
 }
 
+
+//See whether it matches a character
 void checkarray()
 {
     if (strcmp(array, "100010111011101") == 0)
@@ -100,7 +121,7 @@ void checkarray()
     {
         printf("8\n");
     }
-    else if (strcmp(array, "101110001011100") == 0)
+    else if (strcmp(array, "101110001011101") == 0)
     {
         printf("9\n");
     }
@@ -212,27 +233,58 @@ void checkarray()
     flag = true;
 }
 
-void enqueue(char element) {
-    if (!flag) {
+//Flip array to read it backwards
+void flipArray(char arr[], int size)
+{
+    int start = 0;
+    int end = size - 1;
+
+    while (start < end)
+    {
+        // Swap elements at start and end indices
+        char temp = arr[start];
+        arr[start] = arr[end];
+        arr[end] = temp;
+
+        // Move indices towards the center
+        start++;
+        end--;
+    }
+}
+
+void enqueue(char element)
+{
+    if (flag == false)
+    {
         array[counter] = element;
         counter++;
-        if (counter == 15) {
+        if (counter == 15)
+        {
             counter = 0;
             checkarray();
+            flipArray(array, 15);
+            checkarray();
+            flipArray(array, 15);
         }
-    } else {
+    }
+    else
+    {
         flag = false;
     }
 }
 
-int main() {
+
+int main()
+{
+
     stdio_init_all();
     gpio_init(IR_SENSOR_PIN);
     gpio_set_dir(IR_SENSOR_PIN, GPIO_IN);
 
     gpio_set_irq_enabled_with_callback(IR_SENSOR_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &on_pulse_change);
 
-    while (1) {
+    while (1)
+    {
         sleep_ms(10);
     }
 
