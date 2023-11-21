@@ -76,7 +76,7 @@ int main() {
 
     // Set up the timer callback to trigger every 1000ms (1 second).
     add_repeating_timer_ms(1000, repeating_timer_callback, NULL, &repeating_timer);
-
+    
     while (1) {
         tight_loop_contents();
     }
