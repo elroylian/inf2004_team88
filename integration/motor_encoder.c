@@ -34,13 +34,11 @@ uint32_t start_time_right;
 uint32_t start_time_left;
 int rise_counter = 0;
 
-const uint16_t THRESHOLD = 1000; // ADC threshold value for black vs white
+const uint16_t THRESHOLD = 500; // ADC threshold value for black vs white
 const uint8_t PERIOD = 100; // Set timer period to 100 us
 volatile uint16_t RESULT_ADC_LEFT;
 volatile uint16_t RESULT_ADC_RIGHT;
 struct repeating_timer timer;
-bool left_ir = false;
-bool right_ir = false;
 bool reverse = false;
 
 void gpio_event_string(char *buf, uint32_t events);
@@ -270,14 +268,14 @@ int main() {
     pwm_set_wrap(slice_num, 12500);
     // Set the PWM running
     pwm_set_enabled(slice_num, true);
-    pwm_set_chan_level(slice_num, PWM_CHAN_A, 12500/3);
-    pwm_set_chan_level(slice_num, PWM_CHAN_B, 12500/3);
+    pwm_set_chan_level(slice_num, PWM_CHAN_A, 12500/2);
+    pwm_set_chan_level(slice_num, PWM_CHAN_B, 12500/2);
 
     while(1) {
 
         if ((RESULT_ADC_LEFT < THRESHOLD) && (RESULT_ADC_RIGHT < THRESHOLD) && (reverse == 0)) {
-            pwm_set_chan_level(slice_num, PWM_CHAN_A, 12500/3);
-            pwm_set_chan_level(slice_num, PWM_CHAN_B, 12500/3);
+            pwm_set_chan_level(slice_num, PWM_CHAN_A, 12500/2);
+            pwm_set_chan_level(slice_num, PWM_CHAN_B, 12500/2);
             setMotorDirections(1,1);
             // printf("moving forward\n");
 
@@ -289,22 +287,6 @@ int main() {
 
             pwm_set_chan_level(slice_num, PWM_CHAN_A, 12500/2.5);
 
-        } else if ((RESULT_ADC_LEFT < THRESHOLD) && (RESULT_ADC_RIGHT < THRESHOLD) && (reverse == 1)) {
-            // printf("its here");
-            // ((RESULT_ADC_LEFT >= THRESHOLD) && (RESULT_ADC_RIGHT >= THRESHOLD)) ||
-            // printf("motor stopped\n");
-            pwm_set_chan_level(slice_num, PWM_CHAN_A, 12500/3);
-            pwm_set_chan_level(slice_num, PWM_CHAN_B, 12500/3);
-            gpio_put(LEFT_MOTOR_PIN_A, 0);
-            gpio_put(LEFT_MOTOR_PIN_B, 0);
-            gpio_put(RIGHT_MOTOR_PIN_A, 0);
-            gpio_put(RIGHT_MOTOR_PIN_B, 0);
-            sleep_ms(2000);
-            setMotorDirections(0,0);
-            sleep_ms(1200);
-            reverse = false;
-            // printf("reversing");
-
         } else if ((RESULT_ADC_LEFT >= THRESHOLD) && (RESULT_ADC_RIGHT >= THRESHOLD) && (reverse == 0)) {
             pwm_set_chan_level(slice_num, PWM_CHAN_A, 12500/2);
             pwm_set_chan_level(slice_num, PWM_CHAN_B, 12500/2);
@@ -314,8 +296,26 @@ int main() {
             gpio_put(RIGHT_MOTOR_PIN_B, 0);
             sleep_ms(2000);
             turnMotorDirections(0,0);
-            sleep_ms(500);
+            sleep_ms(650);
             // printf("turning left\n");
+        } else if ((RESULT_ADC_LEFT < THRESHOLD) && (RESULT_ADC_RIGHT < THRESHOLD) && (reverse == 1)) {
+            // printf("its here");
+            printf("motor stopped\n");
+            pwm_set_chan_level(slice_num, PWM_CHAN_A, 12500/2);
+            pwm_set_chan_level(slice_num, PWM_CHAN_B, 12500/2);
+            gpio_put(LEFT_MOTOR_PIN_A, 0);
+            gpio_put(LEFT_MOTOR_PIN_B, 0);
+            gpio_put(RIGHT_MOTOR_PIN_A, 0);
+            gpio_put(RIGHT_MOTOR_PIN_B, 0);
+            sleep_ms(2000);
+            setMotorDirections(0,0);
+            sleep_ms(1000);
+            gpio_put(LEFT_MOTOR_PIN_A, 0);
+            gpio_put(LEFT_MOTOR_PIN_B, 0);
+            gpio_put(RIGHT_MOTOR_PIN_A, 0);
+            gpio_put(RIGHT_MOTOR_PIN_B, 0);
+            reverse = false;
+            printf("reversing");
         } else {
             gpio_put(LEFT_MOTOR_PIN_A, 0);
             gpio_put(LEFT_MOTOR_PIN_B, 0);
