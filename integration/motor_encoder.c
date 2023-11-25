@@ -20,27 +20,26 @@
 #define ADC_PIN_LEFT 0
 #define ADC_PIN_RIGHT 1
 
-#define IRPOWER_LEFT 22
-#define IRPOWER_RIGHT 21
-
 #define DIST_GAUGE 1.0210176
+
+#define TRIGGER_PIN 21
+#define ECHO_PIN 20
+
+int timeout = 38000;
 
 static char event_str[128];
 
-struct repeating_timer timer;
-volatile bool timer_running = false;
 volatile uint32_t elapsed_time = 0;
 uint32_t start_time_right;
 uint32_t start_time_left;
 int rise_counter = 0;
 
-// const uint8_t ADC_PIN_LEFT = 0; // Use ADC 0
-// const uint8_t ADC_PIN_LEFT = 1; // Use ADC 1
-const uint16_t THRESHOLD = 1000; // ADC threshold value for black vs white
+const uint16_t THRESHOLD = 500; // ADC threshold value for black vs white
 const uint8_t PERIOD = 100; // Set timer period to 100 us
 volatile uint16_t RESULT_ADC_LEFT;
 volatile uint16_t RESULT_ADC_RIGHT;
 struct repeating_timer timer;
+bool reverse = false;
 
 void gpio_event_string(char *buf, uint32_t events);
 
@@ -54,8 +53,8 @@ void setMotorDirections(bool left_forward, bool right_forward) {
 void turnMotorDirections(bool left_forward, bool right_forward) {
     gpio_put(LEFT_MOTOR_PIN_A, left_forward);
     gpio_put(LEFT_MOTOR_PIN_B, !left_forward);
-    gpio_put(RIGHT_MOTOR_PIN_A, right_forward);
-    gpio_put(RIGHT_MOTOR_PIN_B, !right_forward);
+    gpio_put(RIGHT_MOTOR_PIN_A, !right_forward);
+    gpio_put(RIGHT_MOTOR_PIN_B, right_forward);
 }
 
 void calculate_left() {
@@ -90,42 +89,15 @@ void gpio_callback(uint gpio, uint32_t events) {
 
     rise_counter = rise_counter + 1;
 
-    if (gpio == 2) {
+    if (gpio == 27) {
         calculate_right();
         start_time_right = time_us_32();
     }
 
-    if (gpio == 3) {
+    if (gpio == 26) {
         calculate_left();
         start_time_left = time_us_32();
     }
-
-}
-
-bool adc_callback(struct repeating_timer *t) {
-    // Read adc value and print black or white
-    uint16_t result_left = adc_read();
-    uint16_t result_right = adc_read();
-    RESULT_ADC_LEFT = result_left; 
-    RESULT_ADC_RIGHT = result_right; 
-
-    if (result_left >= THRESHOLD) {
-        // Above or equal threshold
-        printf("%u, BLACK DETECTED ON LEFT\n", result_left);
-    } else {           
-        // Below threshold
-        printf("%u, WHITE DETECTED ON LEFT\n", result_left);
-    }
-
-    if (result_right >= THRESHOLD) {
-        // Above or equal threshold
-        printf("%u, BLACK DETECTED ON RIGHT\n", result_right);
-    } else {           
-        // Below threshold
-        printf("%u, WHITE DETECTED ON RIGHT\n", result_right);
-    }
-
-    return true;
 }
 
 uint16_t read_adc_channel(uint channel) {
@@ -133,9 +105,56 @@ uint16_t read_adc_channel(uint channel) {
     return adc_read();
 }
 
-bool read_left_ir_sensor() {
+uint64_t get_cm(uint trigger_pin, uint echo_pin) {
+    gpio_put(trigger_pin, 1);
+    busy_wait_us(10);
+    gpio_put(trigger_pin, 0);
+
+    uint64_t width = 0;
+    uint64_t max_width = timeout;
+
+    // Wait for the echo signal to go HIGH with a timeout
+    while (gpio_get(echo_pin) == 0 && max_width > 0) {
+        busy_wait_us(1);  // Use busy_wait_us for non-blocking wait
+        max_width--;
+    }
+
+    if (max_width <= 0) {
+        return 0;  // Return 0 if the timeout is reached
+    }
+
+    absolute_time_t startTime = get_absolute_time();
+    max_width = timeout;
+
+    // Measure the pulse width of the echo signal
+    while (gpio_get(echo_pin) == 1 && max_width > 0) {
+        width++;
+        busy_wait_us(1);  // Use busy_wait_us for non-blocking wait
+        max_width--;
+    }
+
+    if (max_width <= 0) {
+        return 0;  // Return 0 if the timeout is reached
+    }
+
+    absolute_time_t endTime = get_absolute_time();
+    return absolute_time_diff_us(startTime, endTime) / 29 / 2;
+}
+
+bool read_ir_sensor() {
     RESULT_ADC_LEFT = read_adc_channel(ADC_PIN_LEFT);
     RESULT_ADC_RIGHT = read_adc_channel(ADC_PIN_RIGHT);
+
+    uint64_t distance_cm = get_cm(TRIGGER_PIN, ECHO_PIN);
+    // printf("Distance in cm: %llu\n", distance_cm);
+
+    if (distance_cm < 10) {
+        // printf("Distance is less than 10cm.\n");
+        // setMotorDirections(0,0);
+        reverse = true;
+        // sleep_ms(5000);
+        // reverse = false; 
+    }
 
     if (RESULT_ADC_LEFT >= THRESHOLD) {
         // Above or equal threshold
@@ -156,9 +175,11 @@ bool read_left_ir_sensor() {
     return true;
 }
 
-bool read_right_ir_sensor() {
-    RESULT_ADC_RIGHT = read_adc_channel(ADC_PIN_RIGHT);
-    return true;
+void setup_ultrasonic_pins(uint trigger_pin, uint echo_pin) {
+    gpio_init(trigger_pin);
+    gpio_init(echo_pin);
+    gpio_set_dir(trigger_pin, GPIO_OUT);
+    gpio_set_dir(echo_pin, GPIO_IN);
 }
 
 static const char *gpio_irq_str[] = {
@@ -192,22 +213,22 @@ void gpio_event_string(char *buf, uint32_t events) {
 int main() {
 
     stdio_init_all();
+    setup_ultrasonic_pins(TRIGGER_PIN, ECHO_PIN);
     adc_init();
     adc_select_input(26);
     adc_select_input(27);
 
-    // add_repeating_timer_us(PERIOD, read_right_ir_sensor, NULL, &timer);
-    add_repeating_timer_us(PERIOD, read_left_ir_sensor, NULL, &timer);
+    add_repeating_timer_us(PERIOD, read_ir_sensor, NULL, &timer);
 
     //GP22
-    gpio_init(IRPOWER_LEFT);
-    gpio_set_dir(IRPOWER_LEFT, GPIO_OUT);
-    gpio_put(IRPOWER_LEFT, 1);
+    // gpio_init(IRPOWER_LEFT);
+    // gpio_set_dir(IRPOWER_LEFT, GPIO_OUT);
+    // gpio_put(IRPOWER_LEFT, 1);
 
-    //GP21
-    gpio_init(IRPOWER_RIGHT);
-    gpio_set_dir(IRPOWER_RIGHT, GPIO_OUT);
-    gpio_put(IRPOWER_RIGHT, 1);
+    // //GP21
+    // gpio_init(IRPOWER_RIGHT);
+    // gpio_set_dir(IRPOWER_RIGHT, GPIO_OUT);
+    // gpio_put(IRPOWER_RIGHT, 1);
     
     //Left wheel
     gpio_init(LEFT_MOTOR_PIN_A);
@@ -220,28 +241,25 @@ int main() {
     gpio_set_dir(RIGHT_MOTOR_PIN_A, GPIO_OUT);
     gpio_init(RIGHT_MOTOR_PIN_B);
     gpio_set_dir(RIGHT_MOTOR_PIN_B, GPIO_OUT);
-    gpio_init(19);
-    gpio_init(20);
-    gpio_set_dir(19, GPIO_OUT);
-    gpio_set_dir(20, GPIO_OUT);
-    gpio_put(19, 0);
-    gpio_put(20, 1);
 
-    gpio_init(17);
-    // gpio_init(16);
-    gpio_set_dir(17, GPIO_OUT);
-    // gpio_set_dir(16, GPIO_OUT);
-    gpio_put(17, 1);
-    // gpio_put(16, 1);
+    // gpio_init(19);
+    // gpio_init(20);
+    // gpio_set_dir(19, GPIO_OUT);
+    // gpio_set_dir(20, GPIO_OUT);
+    // gpio_put(19, 0);
+    // gpio_put(20, 1);
 
-
+    // gpio_init(17);
+    // gpio_set_dir(17, GPIO_OUT);
+    // gpio_put(17, 1);
 
     // Tell GPIO 0 and 1 they are allocated to the PWM
     gpio_set_function(0, GPIO_FUNC_PWM);
     gpio_set_function(1, GPIO_FUNC_PWM);
 
-    gpio_set_irq_enabled_with_callback(2, GPIO_IRQ_EDGE_RISE, true, &gpio_callback);
-    gpio_set_irq_enabled_with_callback(3, GPIO_IRQ_EDGE_RISE, true, &gpio_callback);
+    // Wheel Encoder
+    // gpio_set_irq_enabled_with_callback(2, GPIO_IRQ_EDGE_RISE, true, &gpio_callback);
+    // gpio_set_irq_enabled(3, GPIO_IRQ_EDGE_RISE, true);
 
     // Find out which PWM slice is connected to GPIO 0 (it's slice 0)
     uint slice_num = pwm_gpio_to_slice_num(0);
@@ -255,48 +273,54 @@ int main() {
 
     while(1) {
 
-        // printf("Enter 1 to move forward, 2 to move reverse: ");
-        // char userInput = getchar();
+        if ((RESULT_ADC_LEFT < THRESHOLD) && (RESULT_ADC_RIGHT < THRESHOLD) && (reverse == 0)) {
+            pwm_set_chan_level(slice_num, PWM_CHAN_A, 12500/2);
+            pwm_set_chan_level(slice_num, PWM_CHAN_B, 12500/2);
+            setMotorDirections(1,1);
+            // printf("moving forward\n");
 
-        if ((RESULT_ADC_LEFT < THRESHOLD) && (RESULT_ADC_RIGHT < THRESHOLD)) {
-            gpio_put(LEFT_MOTOR_PIN_A, 0);
-            gpio_put(LEFT_MOTOR_PIN_B, 1);
-            gpio_put(RIGHT_MOTOR_PIN_A, 0);
-            gpio_put(RIGHT_MOTOR_PIN_B, 1);
-        // } else if ((RESULT_ADC_LEFT >= THRESHOLD) && (true)) {
-        //     gpio_put(LEFT_MOTOR_PIN_A, 0);
-        //     gpio_put(LEFT_MOTOR_PIN_B, 1);
-        //     gpio_put(RIGHT_MOTOR_PIN_A, 1);
-        //     gpio_put(RIGHT_MOTOR_PIN_B, 0);
-        //     // setMotorDirections(false, false);
-        // } else if ((RESULT_ADC_LEFT < THRESHOLD) && (true)) {
-        //     gpio_put(LEFT_MOTOR_PIN_A, 1);
-        //     gpio_put(LEFT_MOTOR_PIN_B, 0);
-        //     gpio_put(RIGHT_MOTOR_PIN_A, 0);
-        //     gpio_put(RIGHT_MOTOR_PIN_B, 1);
-            // turnMotorDirections(true, true);
-        // } else if (userInput == '4') {
-        //     gpio_put(LEFT_MOTOR_PIN_A, 0);
-        //     gpio_put(LEFT_MOTOR_PIN_B, 1);
-        //     gpio_put(RIGHT_MOTOR_PIN_A, 1);
-        //     gpio_put(RIGHT_MOTOR_PIN_B, 0);
-            // turnMotorDirections(false, false);
-        } else if ((RESULT_ADC_LEFT >= THRESHOLD) && (RESULT_ADC_RIGHT >= THRESHOLD)) {
+        } else if ((RESULT_ADC_LEFT < THRESHOLD) && (RESULT_ADC_RIGHT >= THRESHOLD) && (reverse == 0)) {
+
+            pwm_set_chan_level(slice_num, PWM_CHAN_B, 12500/2.5);
+
+        } else if ((RESULT_ADC_LEFT >= THRESHOLD) && (RESULT_ADC_RIGHT < THRESHOLD) && (reverse == 0)) {
+
+            pwm_set_chan_level(slice_num, PWM_CHAN_A, 12500/2.5);
+
+        } else if ((RESULT_ADC_LEFT >= THRESHOLD) && (RESULT_ADC_RIGHT >= THRESHOLD) && (reverse == 0)) {
+            pwm_set_chan_level(slice_num, PWM_CHAN_A, 12500/2);
+            pwm_set_chan_level(slice_num, PWM_CHAN_B, 12500/2);
             gpio_put(LEFT_MOTOR_PIN_A, 0);
             gpio_put(LEFT_MOTOR_PIN_B, 0);
             gpio_put(RIGHT_MOTOR_PIN_A, 0);
             gpio_put(RIGHT_MOTOR_PIN_B, 0);
-            // calculate_distance();
-        // } else if (userInput == '6') {
-        //     pwm_set_chan_level(slice_num, PWM_CHAN_A, 12500/4);
-        //     pwm_set_chan_level(slice_num, PWM_CHAN_B, 12500/4);
-
-        // } else if (userInput == '7') {
-        //     pwm_set_chan_level(slice_num, PWM_CHAN_A, 25000/2);
-        //     pwm_set_chan_level(slice_num, PWM_CHAN_B, 25000/2);
-
+            sleep_ms(2000);
+            turnMotorDirections(0,0);
+            sleep_ms(650);
+            // printf("turning left\n");
+        } else if ((RESULT_ADC_LEFT < THRESHOLD) && (RESULT_ADC_RIGHT < THRESHOLD) && (reverse == 1)) {
+            // printf("its here");
+            printf("motor stopped\n");
+            pwm_set_chan_level(slice_num, PWM_CHAN_A, 12500/2);
+            pwm_set_chan_level(slice_num, PWM_CHAN_B, 12500/2);
+            gpio_put(LEFT_MOTOR_PIN_A, 0);
+            gpio_put(LEFT_MOTOR_PIN_B, 0);
+            gpio_put(RIGHT_MOTOR_PIN_A, 0);
+            gpio_put(RIGHT_MOTOR_PIN_B, 0);
+            sleep_ms(2000);
+            setMotorDirections(0,0);
+            sleep_ms(1000);
+            gpio_put(LEFT_MOTOR_PIN_A, 0);
+            gpio_put(LEFT_MOTOR_PIN_B, 0);
+            gpio_put(RIGHT_MOTOR_PIN_A, 0);
+            gpio_put(RIGHT_MOTOR_PIN_B, 0);
+            reverse = false;
+            printf("reversing");
         } else {
-            printf("Re-enter input!\n");
+            gpio_put(LEFT_MOTOR_PIN_A, 0);
+            gpio_put(LEFT_MOTOR_PIN_B, 0);
+            gpio_put(RIGHT_MOTOR_PIN_A, 0);
+            gpio_put(RIGHT_MOTOR_PIN_B, 0);
         };
     };
 }
