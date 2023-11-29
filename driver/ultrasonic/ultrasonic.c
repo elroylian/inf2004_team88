@@ -6,6 +6,8 @@
 #include "pico/time.h"
 
 
+int timeout = 38000;  // Timeout for echo signal in microseconds
+
 // Function to set up ultrasonic sensor pins
 void setupUltrasonicPins(uint trigPin, uint echoPin) {
     gpio_init(trigPin);
