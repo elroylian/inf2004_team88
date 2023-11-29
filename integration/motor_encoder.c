@@ -46,7 +46,7 @@ bool reverse = false; //if reverse == true, means wall is detected on both ir se
 
 //wifi settings for FreeRTOS
 const char WIFI_SSID[] = "KK-iPhone";
-const char WIFI_PASSWORD[] = "MaximusPP";
+const char WIFI_PASSWORD[] = "Password";
 
 //sets both motor to go forward or backwards
 void setMotorDirections(bool left_forward, bool right_forward) {
@@ -208,16 +208,16 @@ int main() {
     adc_select_input(27);
 
     add_repeating_timer_us(PERIOD, read_ir_sensor, NULL, &timer);
-
+    // Connect to the WiFI network - loop until connected
     while(cyw43_arch_wifi_connect_timeout_ms(WIFI_SSID, WIFI_PASSWORD, CYW43_AUTH_WPA2_AES_PSK, 30000) != 0) {
         printf("Attempting to connect...\n");
     }
-
+    // Print a success message once connected
     printf("Connected!\n");
-
+    // Initialise web server
     httpd_init();
     printf("Http server initialised\n");
-    
+    // Configure SSI and CGI handler
     ssi_init();
     printf("SSI Handler initialised\n");
     cgi_init();
